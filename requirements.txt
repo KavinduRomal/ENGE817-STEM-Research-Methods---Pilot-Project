@@ -1,0 +1,2 @@
+pymodbus==3.6.9
+scapy>=2.5.0

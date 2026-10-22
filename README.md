@@ -1,1 +1,181 @@
-# ENGE817-STEM-Research-Methods---Pilot-Project
+# Network Traffic Analysis of Smart Solar IoT Inverters
+
+A small-scale, reproducible pilot study examining whether smart solar inverter telemetry
+is transmitted with transport encryption and authentication.
+
+**ENGE817 — STEM Research Methods**
+Kavindu Romal Abegunawardana · Auckland University of Technology · 2026
+Supervisor: Professor Nurul Sarkar
+
+---
+
+## Research question
+
+> What network protocol is used to transmit smart solar inverter telemetry, and is that
+> communication encrypted and authenticated?
+
+## Findings
+
+A controlled packet-capture pilot was conducted against a simulated SunSpec-style
+inverter communicating over Modbus/TCP. Within a 60-second capture window, 56.06 seconds
+of traffic was recorded: 175 packets, of which 114 were Modbus/TCP — 57 polling queries
+and 57 telemetry responses.
+
+**No transport encryption and no authentication exchange were observed.** All 57
+telemetry responses were transmitted as structured plaintext, allowing AC power, DC
+voltage, grid frequency and cumulative energy to be recovered by a passive observer
+without any key, credential or decryption step. A control capture of TLS-protected
+HTTPS traffic under identical conditions produced unreadable ciphertext.
+
+| Metric | Value |
+|---|---|
+| Total packets captured | 175 |
+| Modbus/TCP packets | 114 |
+| Polling queries | 57 |
+| Telemetry responses | 57 |
+| Mean polling interval | 1.0011 s (SD 0.0001 s) |
+| Register payload recovered in clear | 456 bytes |
+| Packets requiring decryption | 0 |
+
+---
+
+## Why this matters
+
+New Zealand is rapidly connecting remotely controllable solar inverters to the
+distribution grid under the AS/NZS 4777 series. Those standards govern electrical
+performance in detail but say very little about the security of the communication
+channels through which inverters are monitored and controlled.
+
+The insecurity of Modbus is widely stated in the literature, but it is usually inferred
+from the protocol specification or demonstrated in specialist laboratory testbeds. This
+project demonstrates it directly, using a method that needs no hardware and can be
+reproduced on any machine with a browser.
+
+---
+
+## Repository contents
+
+```
+smart_inverter_pilot.py            Complete testbed in a single file (see below)
+ENGE817_Pilot_Study_COLAB.ipynb    The same experiment as a runnable Colab notebook
+requirements.txt                   Pinned dependencies
+data/
+  pilot_capture.pcap               Raw capture of the Modbus/TCP telemetry exchange
+  tls_capture.pcap                 Control capture of TLS-protected HTTPS traffic
+figures/                           Figures reproduced in the report
+```
+
+---
+
+## Usage
+
+`smart_inverter_pilot.py` contains the entire testbed and has four modes.
+
+### Install
+
+```bash
+pip install -r requirements.txt
+sudo apt-get install -y tshark        # or install Wireshark
+```
+
+### Run the whole experiment in one command
+
+```bash
+sudo python3 smart_inverter_pilot.py pilot --seconds 60 --out pilot_capture.pcap
+```
+
+This starts the inverter, begins the capture, starts the monitoring client, records for
+the chosen interval, stops cleanly, and prints the analysis.
+
+### Or run the components separately
+
+```bash
+# Terminal 1 — the simulated inverter
+sudo python3 smart_inverter_pilot.py serve
+
+# Terminal 2 — the simulated vendor monitoring platform
+python3 smart_inverter_pilot.py monitor
+
+# Terminal 3 — capture with Wireshark
+sudo tshark -i lo -f "tcp port 502" -w pilot_capture.pcap -a duration:60
+```
+
+### Analyse an existing capture
+
+```bash
+python3 smart_inverter_pilot.py analyse data/pilot_capture.pcap
+```
+
+Root privileges are required because Modbus/TCP uses port 502 and packet capture needs
+raw socket access.
+
+### No installation at all
+
+Open `ENGE817_Pilot_Study_COLAB.ipynb` in [Google Colab](https://colab.research.google.com)
+and run the cells in order. It installs its own dependencies and completes in about five
+minutes.
+
+---
+
+## Method
+
+A local peer-to-peer network was established in which a simulated inverter served four
+telemetry registers — AC power, DC voltage, grid frequency and cumulative energy — over
+Modbus/TCP on TCP port 502, the IANA-registered Modbus port. A monitoring client polled
+those registers once per second, replicating vendor monitoring behaviour. Traffic was
+captured on the loopback interface using Wireshark (tshark 4.2.2) and analysed both
+interactively and programmatically using Scapy.
+
+A control capture of HTTPS traffic was taken under identical conditions to provide a
+protected-transport baseline for comparison.
+
+**Tool versions**
+
+| Component | Version |
+|---|---|
+| Wireshark (tshark) | 4.2.2 |
+| Python | 3.13.16 |
+| pymodbus | 3.6.9 (pinned) |
+| Scapy | 2.8.0 |
+
+`pymodbus` is pinned because the library's API changed between major releases; unpinned,
+the testbed is not reproducible.
+
+---
+
+## Scope and ethics
+
+This study is **passive and self-contained**. All captured traffic was generated by the
+researcher on the researcher's own machine. No physical device, vendor service,
+third-party network or production system was accessed, and no exploitation of any kind
+was attempted.
+
+The findings describe a property of the Modbus/TCP protocol as specified and
+implemented. They do not characterise the complete security posture of any commercial
+inverter product or vendor.
+
+---
+
+## Limitations
+
+- The inverter is simulated, not a commercial device
+- One protocol examined; vendor cloud backhaul (MQTT, HTTPS, REST) is out of scope
+- Loopback capture in a cloud VM, not a live household network with competing traffic
+- Passive observation only — exposure is demonstrated, exploitability is inferred
+- A single short capture; no longitudinal or statistical claim is made
+
+---
+
+## Key references
+
+- Obert, J., Cordeiro, P., Johnson, J., Lum, G., Tansy, T., Pala, M., & Ih, R. (2019). *Recommendations for trust and encryption in DER interoperability standards* (SAND2019-1490). Sandia National Laboratories. https://doi.org/10.2172/1761841
+- Zografopoulos, I., Hatziargyriou, N. D., & Konstantinou, C. (2023). Distributed energy resources cybersecurity outlook. *IEEE Systems Journal, 17*(4), 6695–6709. https://doi.org/10.1109/JSYST.2023.3305757
+- Karumba, S., Chau, S. C.-K., Pearce, H., Ahmed, M., & Janicke, H. (2024). Systematic study of cybersecurity threats for smart inverters. *ACM e-Energy*, 669–675. https://doi.org/10.1145/3632775.3661994
+- Musleh, A. S., Ahmed, J., Ahmed, N., Xu, H., Chen, G., Kerr, S., & Jha, S. (2024). Experimental cybersecurity evaluation of distributed solar inverters. *IEEE Transactions on Smart Grid, 15*(5), 5139–5150. https://doi.org/10.1109/TSG.2024.3393439
+- National Institute of Standards and Technology. (2024). *Cybersecurity for smart inverters* (NIST IR 8498). https://doi.org/10.6028/NIST.IR.8498
+
+---
+
+## Licence
+
+MIT — see `LICENSE`. The captured data is included for verification and reuse.
